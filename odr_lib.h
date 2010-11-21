@@ -40,6 +40,15 @@ char data[28]; /*valid only if DREQ or DREP else ignored*/
 
 typedef struct odr_packet t_odrp;
 
+struct seen_list_node{
+	unsigned long source_ip;
+	int	broadcast_id;
+	int 	hop_count;
+	struct seen_list_node *next;
+};
+
+int is_dup_req(unsigned long source_ip,int broadcast_id,int hop_count);
+
 
 struct queue_node {
 t_odrp packet;
@@ -47,6 +56,9 @@ struct queue_node *next;
 };
 
 typedef struct queue_node qnode;
+typedef struct seen_list_node snode;
+
+extern snode *shead;
 
 extern qnode *qhead;
 

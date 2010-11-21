@@ -2,9 +2,39 @@
 
 t_route *head= NULL;
 qnode *qhead=NULL;
+snode *shead=NULL;
 
+/* returns 1 if it has seen req before, else returns 0 and updates the list*/
+int is_dup_req(unsigned long source_ip,int broadcast_id,int hop_count)
+{
+	snode *node=shead;
+	snode *new_node;	
+	while(node)
+	{
+		if((node->source_ip==source_ip)&&(node->broadcast_id==broadcast_id)&&
+			(node->hop_count>hop_count))
+		{
+			node->hop_count = hop_count;
+			return 0;
+		}
+		else if((node->source_ip==source_ip)&&(node->broadcast_id==broadcast_id)&&
+			(node->hop_count<=hop_count))
+			return 1;
+		node=node->next;
+	}
+	
+	new_node = (snode *) malloc(sizeof(snode));
+	
+	new_node->source_ip=source_ip;
+	new_node->broadcast_id = broadcast_id;
+	new_node->hop_count = hop_count;
 
+	new_node->next= shead;
 
+	shead= new_node;
+
+	return 0;
+}
 qnode* enqueue(t_odrp *packet)
 {
 	qnode *node = (qnode*)malloc(sizeof(qnode));
@@ -88,11 +118,12 @@ int process_RREQ(int sockfd,char* src_mac,int from_ifindex,t_odrp* odr_packet)
 
 	*/
 	char dest_mac[6];
-	int i=0;
+	int i=0,update=0;
 	time_t ts = time(NULL);
 	t_route *entry ;
 	t_odrp reply;
 	
+//	getchar();
 	memset(&reply,0,sizeof(reply));
 
 	/*passive entry for back path*/
@@ -103,10 +134,10 @@ int process_RREQ(int sockfd,char* src_mac,int from_ifindex,t_odrp* odr_packet)
 		return;
 	}
 	if(odr_packet->source_ip!=eth0_ip.sin_addr.s_addr)
-		add_route_entry(odr_packet->source_ip,from_ifindex,src_mac,odr_packet->hop_count+1,ts,
+		update=add_route_entry(odr_packet->source_ip,from_ifindex,src_mac,odr_packet->hop_count+1,ts,
 									odr_packet->flag&FORCED_ROUTE);
 
-	if((odr_packet->dest_ip==eth0_ip.sin_addr.s_addr)&&(!(odr_packet->flag&REP_ALREADY_SENT)))
+	if((odr_packet->dest_ip==eth0_ip.sin_addr.s_addr))
 	{
 		reply.type= RREP;
 		reply.source_ip = eth0_ip.sin_addr.s_addr;
@@ -121,14 +152,25 @@ int process_RREQ(int sockfd,char* src_mac,int from_ifindex,t_odrp* odr_packet)
 			i++;	
 		}	
 		assert(i<total_if_count);
-		printf("I am Last node, sending RREP back..\n");	
-		send_pf_packet(sockfd,i,dest_mac,&reply);
+		if((odr_packet->flag&REP_ALREADY_SENT))
+			printf("I am Last node, but not sending RREP back as flag was set..\n");
+		else{
+			printf("I am Last node sending RREP back\n");	
+			send_pf_packet(sockfd,i,dest_mac,&reply);
+		}
 	
 	}
 
-	else if((odr_packet->flag)||((entry=find_route_entry(odr_packet->dest_ip,ts))==NULL))
+	else if((odr_packet->flag&FORCED_ROUTE)||((entry=find_route_entry(odr_packet->dest_ip,ts))==NULL))
 	{
 		/*broadcast without looking for routing entry*/
+		if(entry==NULL)
+		{
+			printf("\nRouting Miss for %s\n",(char*)inet_ntoa(odr_packet->dest_ip) );
+		}
+		else
+			printf("\nhere because flag set: %x\n",odr_packet->flag);
+
 		memset(dest_mac,0xff,IF_HADDR);
 		odr_packet->hop_count++;
 		i=0;	
@@ -147,46 +189,57 @@ int process_RREQ(int sockfd,char* src_mac,int from_ifindex,t_odrp* odr_packet)
 		
 	}
 	else{
+	
+		if(!(odr_packet->flag&REP_ALREADY_SENT))
+		{		
+			reply.type= RREP;
+			reply.source_ip = entry->dest_ip;
+			reply.dest_ip  = odr_packet->source_ip;
+			reply.hop_count = entry->hop_count;
+			memcpy(dest_mac,src_mac,IF_HADDR);
+			i=0;
+			while(i<total_if_count)
+			{
+				if(from_ifindex==if_list[i].if_index)
+					break;
+				i++;	
+			}	
+			assert(i<total_if_count);
 			
-		reply.type= RREP;
-		reply.source_ip = entry->dest_ip;
-		reply.dest_ip  = odr_packet->source_ip;
-		reply.hop_count = entry->hop_count;
-		memcpy(dest_mac,entry->neighbour,IF_HADDR);
-		i=0;
-		while(i<total_if_count)
-		{
-			if(from_ifindex==if_list[i].if_index)
-				break;
-			i++;	
-		}	
-		assert(i<total_if_count);
-		
-		printf("Routing entry hit, sending unicast RREP\n");	
-		send_pf_packet(sockfd,i,dest_mac,&reply);
-		
+			printf("Routing entry hit, sending unicast RREP\n");	
+			send_pf_packet(sockfd,i,dest_mac,&reply);
+		}
+		else {
+			printf("Not sending RREP as REP_ALREADY_SENT\n");
+		}
+
 	/*	entry->ts=ts;
 		printf("\npath reconfirmed %s to %s in %d hops",get_name(reply.source_ip),
 							get_name(reply.dest_ip),reply.hop_count);
 	*/
 		/*broadcast with REP_ALREADY_SENT flag*/
-		memset(dest_mac,0xff,IF_HADDR);
-		odr_packet->hop_count++;
-		odr_packet->flag|= REP_ALREADY_SENT;
-		i=0;
-		while(i<total_if_count)
+		if(((odr_packet->flag&REP_ALREADY_SENT)&&update)||(!(odr_packet->flag&REP_ALREADY_SENT)))
 		{
-			if(if_list[i].if_index==from_ifindex)
+			memset(dest_mac,0xff,IF_HADDR);
+			odr_packet->hop_count++;
+			odr_packet->flag|= REP_ALREADY_SENT;
+			i=0;
+			while(i<total_if_count)
 			{
-				i++;
-				continue;
-			}
+				if(if_list[i].if_index==from_ifindex)
+				{
+					i++;
+					continue;
+				}
 				
-		printf("Broadcasting RREQ with REP_ALREADY_SENT\n");
-		send_pf_packet(sockfd,i,dest_mac,odr_packet);
-			i++;	
+			printf("Broadcasting RREQ with REP_ALREADY_SENT\n");
+			send_pf_packet(sockfd,i,dest_mac,odr_packet);
+				i++;	
+			}
 		}
-	
+		else{
+			printf("Broadcasting REP_ALREADY_SENT's RREQ skipped\n");
+		}
 
 	}
 		
@@ -289,7 +342,7 @@ int process_RREP(int sockfd,char *src_mac,int from_ifindex,t_odrp* odr_packet)
 int add_route_entry(unsigned long dest_ip, int if_index, char* neighbour,int hop_count, time_t ts,int force)
 {
 	t_route *node = head;
-
+	int ret=0;
 	while(node)
 	{
 		if(node->dest_ip==dest_ip)
@@ -308,6 +361,10 @@ int add_route_entry(unsigned long dest_ip, int if_index, char* neighbour,int hop
 		node->dest_ip=	dest_ip;
 		node->if_index=	if_index;
 		memcpy(node->neighbour,neighbour,IF_HADDR);
+
+		if(hop_count!=node->hop_count)
+			ret=1;
+		else ret=0;
 		node->hop_count=hop_count;
 		node->ts =	ts;
 
@@ -319,7 +376,7 @@ int add_route_entry(unsigned long dest_ip, int if_index, char* neighbour,int hop
 		/*do nothing, table is upto date*/
 	}
 			
-	return 0;
+	return ret;
 
 }
 
