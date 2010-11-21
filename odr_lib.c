@@ -96,8 +96,15 @@ int process_RREQ(int sockfd,char* src_mac,int from_ifindex,t_odrp* odr_packet)
 	memset(&reply,0,sizeof(reply));
 
 	/*passive entry for back path*/
-	add_route_entry(odr_packet->source_ip,from_ifindex,src_mac,odr_packet->hop_count+1,ts,
-				odr_packet->flag&FORCED_ROUTE);
+
+	if(odr_packet->source_ip==eth0_ip.sin_addr.s_addr)
+	{
+		printf("Cyclic request, not relaying..\n");
+		return;
+	}
+	if(odr_packet->source_ip!=eth0_ip.sin_addr.s_addr)
+		add_route_entry(odr_packet->source_ip,from_ifindex,src_mac,odr_packet->hop_count+1,ts,
+									odr_packet->flag&FORCED_ROUTE);
 
 	if((odr_packet->dest_ip==eth0_ip.sin_addr.s_addr)&&(!(odr_packet->flag&REP_ALREADY_SENT)))
 	{
@@ -114,7 +121,7 @@ int process_RREQ(int sockfd,char* src_mac,int from_ifindex,t_odrp* odr_packet)
 			i++;	
 		}	
 		assert(i<total_if_count);
-	
+		printf("I am Last node, sending RREP back..\n");	
 		send_pf_packet(sockfd,i,dest_mac,&reply);
 	
 	}
@@ -132,8 +139,9 @@ int process_RREQ(int sockfd,char* src_mac,int from_ifindex,t_odrp* odr_packet)
 				i++;
 				continue;
 			}
-				
+		printf("No routing entry,broadcasting RREQ \n");		
 		send_pf_packet(sockfd,i,dest_mac,odr_packet);
+			i++;
 	
 		}
 		
@@ -153,7 +161,8 @@ int process_RREQ(int sockfd,char* src_mac,int from_ifindex,t_odrp* odr_packet)
 			i++;	
 		}	
 		assert(i<total_if_count);
-	
+		
+		printf("Routing entry hit, sending unicast RREP\n");	
 		send_pf_packet(sockfd,i,dest_mac,&reply);
 		
 	/*	entry->ts=ts;
@@ -173,8 +182,9 @@ int process_RREQ(int sockfd,char* src_mac,int from_ifindex,t_odrp* odr_packet)
 				continue;
 			}
 				
+		printf("Broadcasting RREQ with REP_ALREADY_SENT\n");
 		send_pf_packet(sockfd,i,dest_mac,odr_packet);
-	
+			i++;	
 		}
 	
 
@@ -194,13 +204,14 @@ int process_RREP(int sockfd,char *src_mac,int from_ifindex,t_odrp* odr_packet)
 	qnode *node;
 	time_t ts = time(NULL);
 	int i=0;
-	t_route *entry;
+	t_route *entry=NULL;
 	t_odrp request;
 	char dest_mac[6];
 
 	memset(&request,0,sizeof(request));
 
-	add_route_entry(odr_packet->source_ip,from_ifindex,src_mac,odr_packet->hop_count+1,ts,0);
+	if(odr_packet->source_ip!=eth0_ip.sin_addr.s_addr)
+		add_route_entry(odr_packet->source_ip,from_ifindex,src_mac,odr_packet->hop_count+1,ts,0);
 
 
 	while(node=dequeue(odr_packet->source_ip))
@@ -216,7 +227,7 @@ int process_RREP(int sockfd,char *src_mac,int from_ifindex,t_odrp* odr_packet)
 		assert(i<total_if_count);
 		
 		node->packet.hop_count++;
-		
+		printf("Replying to prev queued entry\n");	
 		send_pf_packet(sockfd,i,src_mac,&node->packet);
 		free(node);
 	}	
@@ -225,8 +236,8 @@ int process_RREP(int sockfd,char *src_mac,int from_ifindex,t_odrp* odr_packet)
 	if(odr_packet->dest_ip==eth0_ip.sin_addr.s_addr)
 	{
 		/*Do nothing, we only had initiated*/
-		printf("\npath from %s to %s in %d hops\n",get_name(eth0_ip.sin_addr.s_addr),
-					get_name(odr_packet->source_ip),odr_packet->hop_count);
+		printf("\n Ultimate path from %s to %s in %d hops\n",get_name(eth0_ip.sin_addr.s_addr),
+					get_name(odr_packet->source_ip),odr_packet->hop_count+1);
 		return;
 	}
 	entry= find_route_entry(odr_packet->dest_ip,ts);
@@ -249,21 +260,27 @@ int process_RREP(int sockfd,char *src_mac,int from_ifindex,t_odrp* odr_packet)
 				i++;
 				continue;
 			}
+
+			printf("Routing miss, sending RREQ\n");
 			send_pf_packet(sockfd,i,dest_mac,&request);
+			i++;
 		}
 	}
 	else{
 
 		memcpy(dest_mac,entry->neighbour,IF_HADDR);
 		odr_packet->hop_count++;
-		
+		assert((char)entry->neighbour[2]!=0xff);	
 		i=0;
 		while(i<total_if_count)
 		{
 			if(if_list[i].if_index==entry->if_index)
 				break;
 			i++;
-		}	
+		}
+		printf("\ngot RREP source %s dest %s \n",(char *)inet_ntoa(odr_packet->source_ip),
+								(char*)inet_ntoa(odr_packet->dest_ip));
+		printf("RREP routing hit, relaying RREP for %s\n",(char*)inet_ntoa(entry->dest_ip));	
 		send_pf_packet(sockfd,i,dest_mac,odr_packet);
 	}	
 	return 0;
@@ -294,7 +311,7 @@ int add_route_entry(unsigned long dest_ip, int if_index, char* neighbour,int hop
 		node->hop_count=hop_count;
 		node->ts =	ts;
 
-		printf("\npath from %s to %s in %d hops\n",get_name(eth0_ip.sin_addr.s_addr),
+		printf("\npath2 from %s to %s in %d hops\n",get_name(eth0_ip.sin_addr.s_addr),
 							get_name(node->dest_ip),node->hop_count);
 	}
 	else{
@@ -320,7 +337,7 @@ int send_pf_packet(int sockfd,int index_in_if_list, char *dest_mac, t_odrp *odr_
 	unsigned char* etherhead = buffer;
 		
 	/*userdata in ethernet frame*/
-	unsigned char* data = buffer + 14;
+	unsigned char* data = buffer + ETH_HDRLEN;
 		
 	/*another pointer to ethernet header*/
 	struct ethhdr *eh = (struct ethhdr *)etherhead;
@@ -330,8 +347,15 @@ int send_pf_packet(int sockfd,int index_in_if_list, char *dest_mac, t_odrp *odr_
 
 	assert(index_in_if_list<total_if_count);
 
-	src_mac= if_list[i].if_haddr;	
-	if_index= if_list[i].if_index;		
+	src_mac= if_list[index_in_if_list].if_haddr;	
+	if_index= if_list[index_in_if_list].if_index;		
+	
+	if(odr_packet->type==RREQ)
+	printf("\nSending RREQ ");
+	else if(odr_packet->type==RREP)
+	printf("\nSending RREP ");
+	else printf("\nSending undefined ");
+	printf("packet on PHY index:%d\n",if_index);
 
 	if(!src_mac){
 		free(buffer);
@@ -386,8 +410,8 @@ int recv_process_pf_packet(int sockfd)
 	int size = sizeof(struct sockaddr_ll);
 	t_odrp *odr_packet;
 	memset(&from,0,sizeof(from));
-	char *src_mac;
-
+	char src_mac[6];
+	char dest_mac[6];
 	int length = 0; /*length of the received frame*/ 
 
 	length = recvfrom(sockfd, recv_buffer,ETH_HDRLEN+sizeof(t_odrp) , 0, (struct sockaddr*)&from,&size);
@@ -397,8 +421,10 @@ int recv_process_pf_packet(int sockfd)
 		return -1;
 	}
 
-	odr_packet= (t_odrp*)recv_buffer+ETH_HDRLEN;
-	src_mac = (char *) recv_buffer;
+	odr_packet= (t_odrp*)(recv_buffer+ETH_HDRLEN);
+	memcpy(src_mac, (char *) (recv_buffer+IF_HADDR),IF_HADDR);
+	memcpy(dest_mac,(char*)recv_buffer,IF_HADDR);
+
 	
 	switch(odr_packet->type)
 	{
@@ -407,6 +433,10 @@ int recv_process_pf_packet(int sockfd)
 				
 		break;
 		case RREP:
+
+			printf("RREP from %x:%x:%x:%x:%x:%x to me at %x:%x:%x:%x:%x:%x \n",
+				src_mac[0],src_mac[1],src_mac[2],src_mac[3],src_mac[4],src_mac[5],
+				dest_mac[0],dest_mac[1],dest_mac[2],dest_mac[3],dest_mac[4],dest_mac[5]);
 			process_RREP(sockfd,src_mac,from.sll_ifindex,odr_packet);
 		break;
 		case DREQ:
@@ -417,8 +447,9 @@ int recv_process_pf_packet(int sockfd)
 
 
 		
-	printf("data recieved: %s",(char*)recv_buffer+14);
+//	printf("data recieved: %s",(char*)recv_buffer+14);
 
+	free(recv_buffer);
 	return 0;
 
 }

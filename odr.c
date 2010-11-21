@@ -6,7 +6,7 @@
 
 	struct hw_odr_info if_list[MAX_IF];
 	int total_if_count=0;
-	int staleness=0;
+	int staleness=1000;
 
 void odr_init()
 {
@@ -49,7 +49,7 @@ void odr_init()
 		}
 
 		printf("\n         interface index = %d\n\n", hwa->if_index);
-		if(strcmp(hwa->if_name,"eth0")||strcmp(hwa->if_name,"lo"))
+		if(strcmp(hwa->if_name,"eth0")&&strcmp(hwa->if_name,"lo"))
 		{
 			strcpy(if_list[total_if_count].if_name,hwa->if_name);
 			memcpy(if_list[total_if_count].if_haddr,hwa->if_haddr,IF_HADDR);
@@ -73,97 +73,32 @@ main (int argc, char **argv)
 	odr_init(); /*Build the interface info table*/
 
 
-
-	void* recv_buffer = (void*)malloc(ETH_FRAME_LEN); /*Buffer for ethernet frame*/
-	int s; /*socketdescriptor*/
+	int maxfdp;
 	
-	/*target address*/
-	struct sockaddr_ll socket_dest_address;
+	fd_set rset;
 	
-	/*buffer for ethernet frame*/
-	void* buffer = (void*)malloc(ETH_FRAME_LEN);
-	 
-	/*pointer to ethenet header*/
-	unsigned char* etherhead = buffer;
-		
-	/*userdata in ethernet frame*/
-	unsigned char* data = buffer + 14;
-		
-	/*another pointer to ethernet header*/
-	struct ethhdr *eh = (struct ethhdr *)etherhead;
-	 
-	int send_result = 0;
+	int sockfd; /*socketdescriptor*/
 	
-	/*our MAC address*/
-	unsigned char src_mac[6] = {0x00,0x0c,0x29,0x58,0x83,0x82};
 	
-	/*other host MAC address*/
-	unsigned char dest_mac[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
-	
-	s = socket(PF_PACKET, SOCK_RAW, htons(2159));
-	if (s == -1) { 
+	sockfd = socket(PF_PACKET, SOCK_RAW, htons(2159));
+	if (sockfd == -1) { 
 		perror("Unable to create socket:");
 		exit(EXIT_FAILURE);
 	}
 	
 	
-	/*prepare sockaddr_ll*/
-	
-	/*RAW communication*/
-	socket_dest_address.sll_family   = PF_PACKET;	
-	/*we don't use a protocoll above ethernet layer
-	  ->just use anything here*/
-	socket_dest_address.sll_protocol = htons(ODR_K2159);	
-	
-	/*index of the network device
-	see full code later how to retrieve it*/
-	socket_dest_address.sll_ifindex  = 2;
-	
-	/*address length*/
-	socket_dest_address.sll_halen    = ETH_ALEN;		
-	/*MAC - begin*/
-	socket_dest_address.sll_addr[0]  = 0xff;		
-	socket_dest_address.sll_addr[1]  = 0xff;		
-	socket_dest_address.sll_addr[2]  = 0xff;
-	socket_dest_address.sll_addr[3]  = 0xff;
-	socket_dest_address.sll_addr[4]  = 0xff;
-	socket_dest_address.sll_addr[5]  = 0xff;
-	/*MAC - end*/
-	socket_dest_address.sll_addr[6]  = 0x00;/*not used*/
-	socket_dest_address.sll_addr[7]  = 0x00;/*not used*/
-	
-	
-	/*set the frame header*/
-	memcpy((void*)buffer, (void*)dest_mac, ETH_ALEN);
-	memcpy((void*)(buffer+ETH_ALEN), (void*)src_mac, ETH_ALEN);
-	eh->h_proto = htons(ODR_K2159);
-	/*fill the frame with some data*/
-	/*for (j = 0; j < 1500; j++) {
-		data[j] = (unsigned char)((int) (255.0*rand()/(RAND_MAX+1.0)));
+	FD_ZERO(&rset);
+
+	while(1)
+	{
+		FD_SET(sockfd,&rset);
+		maxfdp=sockfd+1;
+		
+		select(maxfdp,&rset,NULL,NULL,NULL);
+		if(FD_ISSET(sockfd,&rset))
+		{
+			recv_process_pf_packet(sockfd);
+		}
 	}
-	*/
-
-	strcpy(data,"Hi from the machine");
-
-	/*send the packet*/
-	send_result = sendto(s, buffer, ETH_FRAME_LEN, 0, 
-		      (struct sockaddr*)&socket_dest_address, sizeof(socket_dest_address));
-	if (send_result == -1) { 
-		perror("Send failed..:");
-		exit(EXIT_FAILURE);
-	}
-
-
-
-	int length = 0; /*length of the received frame*/ 
-
-	length = recvfrom(s, recv_buffer, ETH_FRAME_LEN, 0, NULL, NULL);
-	if (length == -1) {
-		perror("Recieve failed:");
-		exit(EXIT_FAILURE);
-	}
-	
-	printf("data recieved: %s",(char *)recv_buffer+14);
-
 	return 0;
 }

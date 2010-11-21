@@ -1,4 +1,6 @@
 /* Our own header for the programs that need hardware address info. */
+#ifndef HW_ADDR_H
+#define HW_ADDR_H
 
 #include <stdio.h>
 #include <sys/socket.h>
@@ -6,6 +8,7 @@
 #include <netinet/in.h>
 #include <linux/if_packet.h>
 #include <linux/if_ether.h>
+#include <assert.h>
 //#include <linux/if_arp.h>
 
 #define ODR_K2159 2159
@@ -43,4 +46,7 @@ extern	struct hw_odr_info if_list[MAX_IF];
 struct hwa_info	*get_hw_addrs();
 struct hwa_info	*Get_hw_addrs();
 void	free_hwa_info(struct hwa_info *);
+
+
+#endif
 
