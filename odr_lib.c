@@ -1,4 +1,5 @@
 #include "odr_lib.h"
+#include "odr.h"
 
 t_route *head= NULL;
 qnode *qhead=NULL;
@@ -106,7 +107,7 @@ t_route * find_route_entry(unsigned long dest_ip,time_t ts)
 }
 
 
-int process_RREQ(int sockfd,char* src_mac,int from_ifindex,t_odrp* odr_packet)
+int process_RREQ(int sockfd,int domainfd,char* src_mac,int from_ifindex,t_odrp* odr_packet)
 {
 	/*
 		A. Broadcast on all interfaces except from_ifindex.
@@ -246,7 +247,7 @@ int process_RREQ(int sockfd,char* src_mac,int from_ifindex,t_odrp* odr_packet)
 	return 0;
 
 }
-int process_RREP(int sockfd,char *src_mac,int from_ifindex,t_odrp* odr_packet)
+int process_RREP(int sockfd,int domainfd,char *src_mac,int from_ifindex,t_odrp* odr_packet)
 {
 	/*
 		Add routing table entry.
@@ -411,7 +412,10 @@ int send_pf_packet(int sockfd,int index_in_if_list, char *dest_mac, t_odrp *odr_
 	printf("\nSending RREQ ");
 	else if(odr_packet->type==RREP)
 	printf("\nSending RREP ");
+	else if(odr_packet->type==APP_DATA)
+		printf("\nSending APP_DATA ");
 	else printf("\nSending undefined ");
+
 	printf("packet on PHY index:%d\n",if_index);
 
 	if(!src_mac){
@@ -460,7 +464,108 @@ int send_pf_packet(int sockfd,int index_in_if_list, char *dest_mac, t_odrp *odr_
 	return 0;
 }
 
-int recv_process_pf_packet(int sockfd)
+int process_APP_DATA(int sockfd,int domainfd,char *src_mac,int from_ifindex, t_odrp *odr_packet)
+{
+	qnode *node;
+	time_t ts = time(NULL);
+	int i=0,ret=0;
+	t_route *entry=NULL;
+	rpacket app_packet;
+	t_odrp request;
+	char dest_mac[6]={};
+	struct sockaddr_un cliaddr;
+
+	
+	memset(&cliaddr,0,sizeof(cliaddr));
+	memset(&request,0,sizeof(request));
+	memset(&app_packet,0,sizeof(app_packet));
+
+	if(odr_packet->source_ip!=eth0_ip.sin_addr.s_addr)
+		add_route_entry(odr_packet->source_ip,from_ifindex,src_mac,odr_packet->hop_count+1,ts,0);
+
+	if(odr_packet->dest_ip==eth0_ip.sin_addr.s_addr)
+	{
+		/*BINGO!! send data to App.*/
+		
+		inet_ntop(AF_INET,&odr_packet->source_ip,app_packet.ip,INET_ADDRSTRLEN);
+
+		printf("\n recieved data from %s to %s in %d hops\n",get_name(odr_packet->source_ip),
+						get_name(odr_packet->dest_ip),odr_packet->hop_count+1);
+		app_packet.src_port = odr_packet->source_port;
+
+		memcpy(app_packet.msg,odr_packet->data,MSG_LEN);
+		cliaddr.sun_family = AF_LOCAL;
+
+		if(odr_packet->dest_port==4455)
+		{
+			printf("data for server at port %d \n",odr_packet->dest_port);
+			strcpy(cliaddr.sun_path,"server.dg");
+		}
+		else{
+	
+			printf("data for client at port %d \n",odr_packet->dest_port);
+			 strcpy(cliaddr.sun_path,"client.dg");
+		}
+	
+		ret=sendto(domainfd,(char *)&app_packet,sizeof(app_packet),0,(struct sockaddr*)&cliaddr,(socklen_t)sizeof(cliaddr));			
+		printf("data sent successfully\n");	
+		if(ret<sizeof(app_packet))
+		{
+			perror("sendto failed:");
+			return;
+		}	
+		return;
+	}
+	entry= find_route_entry(odr_packet->dest_ip,ts);
+
+	if(entry==NULL)
+	{
+		qhead= enqueue(odr_packet);
+		request.type=RREQ;
+		request.source_ip = eth0_ip.sin_addr.s_addr;
+		request.dest_ip = odr_packet->dest_ip;
+		request.hop_count = 0;
+		
+		memset(dest_mac,0xff,IF_HADDR);
+
+		i=0;
+		while(i<total_if_count)
+		{
+			if(if_list[i].if_index==from_ifindex)
+			{
+				i++;
+				continue;
+			}
+
+			printf("Routing miss for data pack, sending RREQ\n");
+			send_pf_packet(sockfd,i,dest_mac,&request);
+			i++;
+		}
+	}
+	else{
+
+		memcpy(dest_mac,entry->neighbour,IF_HADDR);
+		odr_packet->hop_count++;
+		assert((char)entry->neighbour[2]!=0xff);	
+		i=0;
+		while(i<total_if_count)
+		{
+			if(if_list[i].if_index==entry->if_index)
+				break;
+			i++;
+		}
+		printf("\ngot RREP source %s dest %s \n",(char *)inet_ntoa(odr_packet->source_ip),
+								(char*)inet_ntoa(odr_packet->dest_ip));
+		printf("RREP routing hit, relaying RREP for %s\n",(char*)inet_ntoa(entry->dest_ip));	
+		send_pf_packet(sockfd,i,dest_mac,odr_packet);
+	}	
+	return 0;
+
+			
+
+}
+
+int recv_process_pf_packet(int sockfd,int domainfd)
 {
 	void* recv_buffer = (void*)malloc(ETH_HDRLEN+sizeof(t_odrp)); /*Buffer for ethernet frame*/
 	struct sockaddr_ll from;
@@ -486,7 +591,7 @@ int recv_process_pf_packet(int sockfd)
 	switch(odr_packet->type)
 	{
 		case RREQ:
-			process_RREQ(sockfd,src_mac,from.sll_ifindex,odr_packet);
+			process_RREQ(sockfd,domainfd,src_mac,from.sll_ifindex,odr_packet);
 				
 		break;
 		case RREP:
@@ -494,11 +599,13 @@ int recv_process_pf_packet(int sockfd)
 			printf("RREP from %x:%x:%x:%x:%x:%x to me at %x:%x:%x:%x:%x:%x \n",
 				src_mac[0],src_mac[1],src_mac[2],src_mac[3],src_mac[4],src_mac[5],
 				dest_mac[0],dest_mac[1],dest_mac[2],dest_mac[3],dest_mac[4],dest_mac[5]);
-			process_RREP(sockfd,src_mac,from.sll_ifindex,odr_packet);
+			process_RREP(sockfd,domainfd,src_mac,from.sll_ifindex,odr_packet);
 		break;
-		case DREQ:
+		case APP_DATA:
+			process_APP_DATA(sockfd,domainfd,src_mac,from.sll_ifindex,odr_packet);
 		break;
-		case DREP:
+		default:
+			printf("Garbage packet on ODR.. dropping\n");
 		break;
 	}	
 

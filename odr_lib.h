@@ -8,6 +8,7 @@
 #include <netdb.h>
 #include "hw_addrs.h"
 
+#define UNIX_D_PATH "unix2159.dg"
 struct route_entry{
 unsigned long dest_ip; 	/*Entry for which destination*/
 int if_index;		/*which local interface to use*/
@@ -24,8 +25,8 @@ struct odr_packet{
 int type;
 #define RREQ 0
 #define RREP 1
-#define DREQ 2
-#define DREP 3
+#define APP_DATA 2
+
 unsigned long source_ip;
 unsigned long dest_ip;
 int source_port;
@@ -35,7 +36,7 @@ int flag;
 #define FORCED_ROUTE 0x01
 #define	REP_ALREADY_SENT 0x02
 
-char data[28]; /*valid only if DREQ or DREP else ignored*/
+char data[40]; /*valid only if DREQ or DREP else ignored*/
 };
 
 typedef struct odr_packet t_odrp;
@@ -72,6 +73,10 @@ int send_pf_packet(int sockfd,int index_in_if_list, char *dest_mac, t_odrp *odr_
 
 char *get_name(unsigned long);
 
-int recv_process_pf_packet(int );
+int recv_process_pf_packet(int,int );
+
+int is_dup_req(unsigned long source_ip,int broadcast_id,int hop_count);
+qnode* enqueue(t_odrp *packet);
+qnode * dequeue( unsigned long dest_ip);
 
 #endif
