@@ -7,7 +7,7 @@
 
 	struct hw_odr_info if_list[MAX_IF];
 	int total_if_count=0;
-	int staleness=1000;
+	int staleness=0;
 
 void odr_init()
 {
@@ -164,6 +164,10 @@ main (int argc, char **argv)
 
 	int domainfd;
 	struct sockaddr_un servaddr,cliaddr;
+
+	assert(2==argc);
+
+	assert(1==sscanf(argv[1],"%d",&staleness));
 
 	odr_init(); /*Build the interface info table*/
 	unlink(UNIX_D_PATH);

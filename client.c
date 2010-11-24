@@ -17,8 +17,19 @@ int main()
 {
 
 	char server_name[12]={};
+	char client_name[12]={};
 	char server_ip[16]={};
 	char server_ret_ip[16]={};
+
+	int j=0;
+
+	struct hostent *hp;
+	
+	fd_set rset;
+	struct timeval tv;
+	tv.tv_sec = 3;
+	tv.tv_usec =0;
+
 /*
 	create temporary unix domain socket sun_path.
 */
@@ -33,6 +44,7 @@ int main()
 	}
 	
 	unlink("client.dg");
+	gethostname(client_name,sizeof(client_name));
 
        bzero(&cliaddr, sizeof(cliaddr)); /* bind an address for us */
        cliaddr.sun_family = AF_LOCAL;
@@ -43,9 +55,6 @@ int main()
        bzero(&servaddr, sizeof(servaddr)); /* fill in server's address */
        servaddr.sun_family = AF_LOCAL;
        strcpy(servaddr.sun_path, UNIX_D_PATH);
-	int j=0;
-	struct hostent *hp;
-
 	while(1)
 	{
 			
@@ -71,10 +80,37 @@ int main()
 			msg_send(sockfd,server_ip,server_port,"TIMEREQ",0);
 	
 			/*start time*/
-			msg_recv(sockfd,msg,server_ret_ip,&source_port);	
-		
-			printf("\nTime recvd: %s from %s \n",msg,server_ret_ip);
+			FD_ZERO(&rset);
+			FD_SET(sockfd,&rset);
 
+			select(sockfd+1,&rset,NULL,NULL,&tv);
+			if(FD_ISSET(sockfd,&rset))	
+			{		
+				msg_recv(sockfd,msg,server_ret_ip,&source_port);	
+		
+				printf("\nclient at node %s: received from %s %s\n",client_name,server_name,msg);
+			}
+			else {
+				printf("client at node %s: timeout on response from %s\n",client_name,server_name);
+			
+				msg_send(sockfd,server_ip,server_port,"TIMEREQ",1);
+	
+				/*start time*/
+				FD_ZERO(&rset);
+				FD_SET(sockfd,&rset);
+	
+				select(sockfd+1,&rset,NULL,NULL,&tv);
+				if(FD_ISSET(sockfd,&rset))	
+				{		
+					msg_recv(sockfd,msg,server_ret_ip,&source_port);	
+		
+					printf("\nclient at node %s: received from %s %s\n",client_name,server_name,msg);
+				}
+				else {
+					printf("client at node %s Timed out again.. Try another server..\n",client_name);
+				}
+
+			}
 			/*if timed out, send again*/
 
 			/*if still time out, give up accept next server name*/	

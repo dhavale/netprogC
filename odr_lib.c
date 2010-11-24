@@ -157,6 +157,7 @@ int process_RREQ(int sockfd,int domainfd,char* src_mac,int from_ifindex,t_odrp* 
 			printf("I am Last node, but not sending RREP back as flag was set..\n");
 		else{
 			printf("I am Last node sending RREP back\n");	
+			reply.flag = odr_packet->flag&FORCED_ROUTE;
 			send_pf_packet(sockfd,i,dest_mac,&reply);
 		}
 	
@@ -265,7 +266,8 @@ int process_RREP(int sockfd,int domainfd,char *src_mac,int from_ifindex,t_odrp* 
 	memset(&request,0,sizeof(request));
 
 	if(odr_packet->source_ip!=eth0_ip.sin_addr.s_addr)
-		add_route_entry(odr_packet->source_ip,from_ifindex,src_mac,odr_packet->hop_count+1,ts,0);
+		add_route_entry(odr_packet->source_ip,from_ifindex,src_mac,odr_packet->hop_count+1,
+					ts,odr_packet->flag&FORCED_ROUTE);
 
 
 	while(node=dequeue(odr_packet->source_ip))
