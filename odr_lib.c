@@ -326,7 +326,6 @@ int process_RREP(int sockfd,int domainfd,char *src_mac,int from_ifindex,t_odrp* 
 
 		memcpy(dest_mac,entry->neighbour,IF_HADDR);
 		odr_packet->hop_count++;
-		assert((char)entry->neighbour[2]!=0xff);	
 		i=0;
 		while(i<total_if_count)
 		{
@@ -476,6 +475,7 @@ int process_APP_DATA(int sockfd,int domainfd,char *src_mac,int from_ifindex, t_o
 	t_odrp request;
 	char dest_mac[6]={};
 	struct sockaddr_un cliaddr;
+	app_node *app_entry=NULL;
 
 	
 	memset(&cliaddr,0,sizeof(cliaddr));
@@ -501,12 +501,21 @@ int process_APP_DATA(int sockfd,int domainfd,char *src_mac,int from_ifindex, t_o
 		if(odr_packet->dest_port==4455)
 		{
 			printf("data for server at port %d \n",odr_packet->dest_port);
-			strcpy(cliaddr.sun_path,"server.dg");
+			strcpy(cliaddr.sun_path,SERVER_PATH);
 		}
 		else{
 	
 			printf("data for client at port %d \n",odr_packet->dest_port);
-			 strcpy(cliaddr.sun_path,"client.dg");
+			app_entry = lookup_port(odr_packet->dest_port);
+			if(app_entry!=NULL)
+			{
+				printf("data will be sendto %s\n",app_entry->sun_path);
+			 	strcpy(cliaddr.sun_path,app_entry->sun_path);
+			}
+			else{
+				printf("Very stale packet.. dropping\n");
+				return;	
+			}
 		}
 	
 		ret=sendto(domainfd,(char *)&app_packet,sizeof(app_packet),0,(struct sockaddr*)&cliaddr,(socklen_t)sizeof(cliaddr));			
@@ -548,7 +557,6 @@ int process_APP_DATA(int sockfd,int domainfd,char *src_mac,int from_ifindex, t_o
 
 		memcpy(dest_mac,entry->neighbour,IF_HADDR);
 		odr_packet->hop_count++;
-		assert((char)entry->neighbour[2]!=0xff);	
 		i=0;
 		while(i<total_if_count)
 		{

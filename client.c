@@ -43,14 +43,28 @@ int main()
 		exit(EXIT_FAILURE);
 	}
 	
-	unlink("client.dg");
 	gethostname(client_name,sizeof(client_name));
 
        bzero(&cliaddr, sizeof(cliaddr)); /* bind an address for us */
        cliaddr.sun_family = AF_LOCAL;
-       strcpy(cliaddr.sun_path, "client.dg");
 
-       bind(sockfd, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+	strcpy(cliaddr.sun_path,"/tmp/fileXXXXXX");
+       if(mkstemp(cliaddr.sun_path)<0)
+	{
+		perror("\nSunpath cannot be created");
+		return -1;
+	}
+	else{
+
+		printf("going to use sun_path %s\n",cliaddr.sun_path);
+		unlink(cliaddr.sun_path);
+	}
+	j=0;
+      if( bind(sockfd, (struct sockaddr *) &cliaddr, sizeof(cliaddr))<0)
+	{
+		perror("unable to bind:");
+		return -1;
+	}
 
        bzero(&servaddr, sizeof(servaddr)); /* fill in server's address */
        servaddr.sun_family = AF_LOCAL;
