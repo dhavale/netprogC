@@ -379,6 +379,7 @@ void process_app_req(int sockfd,int domainfd)
 		req_packet.source_ip = eth0_ip.sin_addr.s_addr;
 		req_packet.dest_ip = dest_ip.s_addr;
 		req_packet.hop_count =0;
+		req_packet.bcast_id = ++bcast_id;
 		if(packet.force_flag)
 		{
 			req_packet.flag|=FORCED_ROUTE;

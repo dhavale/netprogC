@@ -18,6 +18,7 @@ time_t ts;		/*time stamp when this entry was made*/
 struct route_entry *next;
 };
 
+extern int bcast_id;
 
 typedef struct route_entry t_route;
 
@@ -32,6 +33,7 @@ unsigned long dest_ip;
 int source_port;
 int dest_port;
 int hop_count;
+int bcast_id;
 int flag;
 #define FORCED_ROUTE 0x01
 #define	REP_ALREADY_SENT 0x02
@@ -44,7 +46,6 @@ typedef struct odr_packet t_odrp;
 struct seen_list_node{
 	unsigned long source_ip;
 	int	broadcast_id;
-	int 	hop_count;
 	struct seen_list_node *next;
 };
 

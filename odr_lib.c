@@ -11,23 +11,25 @@
 t_route *head= NULL;
 qnode *qhead=NULL;
 snode *shead=NULL;
+int bcast_id=0;
 
-/* returns 1 if it has seen req before, else returns 0 and updates the list*/
-int is_dup_req(unsigned long source_ip,int broadcast_id,int hop_count)
+/* returns -1 if it is less, 0 if it is equal , 1 if it is greater updates the list*/
+int compare_dup_req(unsigned long source_ip,int broadcast_id)
 {
 	snode *node=shead;
 	snode *new_node;	
 	while(node)
 	{
-		if((node->source_ip==source_ip)&&(node->broadcast_id==broadcast_id)&&
-			(node->hop_count>hop_count))
+		if((node->source_ip==source_ip)&&(node->broadcast_id==broadcast_id))
 		{
-			node->hop_count = hop_count;
 			return 0;
 		}
-		else if((node->source_ip==source_ip)&&(node->broadcast_id==broadcast_id)&&
-			(node->hop_count<=hop_count))
+		else if((node->source_ip==source_ip)&&(node->broadcast_id<broadcast_id)){
+			node->broadcast_id = broadcast_id;
 			return 1;
+		}
+		else if((node->source_ip==source_ip)&&(node->broadcast_id>broadcast_id))
+			return -1;
 		node=node->next;
 	}
 	
@@ -35,13 +37,12 @@ int is_dup_req(unsigned long source_ip,int broadcast_id,int hop_count)
 	
 	new_node->source_ip=source_ip;
 	new_node->broadcast_id = broadcast_id;
-	new_node->hop_count = hop_count;
 
 	new_node->next= shead;
 
 	shead= new_node;
 
-	return 0;
+	return 1;
 }
 qnode* enqueue(t_odrp *packet)
 {
@@ -130,7 +131,7 @@ int process_RREQ(int sockfd,int domainfd,char* src_mac,int from_ifindex,t_odrp* 
 	time_t ts = time(NULL);
 	t_route *entry ;
 	t_odrp reply;
-	
+	int dup=0;
 //	getchar();
 	memset(&reply,0,sizeof(reply));
 
@@ -141,10 +142,24 @@ int process_RREQ(int sockfd,int domainfd,char* src_mac,int from_ifindex,t_odrp* 
 		return;
 	}
 
+
+	dup= compare_dup_req(odr_packet->source_ip,odr_packet->bcast_id);
+	if(dup<0)
+		return;
+	
 	//printf("src %s dest %s  type->RREQ\n",get_name(odr_packet->source_ip),get_name(odr_packet->dest_ip));
 	if(odr_packet->source_ip!=eth0_ip.sin_addr.s_addr)
 		update=add_route_entry(odr_packet->source_ip,from_ifindex,src_mac,odr_packet->hop_count+1,ts,
 									odr_packet->flag&FORCED_ROUTE);
+	if((dup==0)&&update||dup)
+	{
+	//	process
+	}
+	else{
+	//drop
+		return;
+	}
+		
 
 	if((odr_packet->dest_ip==eth0_ip.sin_addr.s_addr))
 	{
@@ -315,7 +330,8 @@ int process_RREP(int sockfd,int domainfd,char *src_mac,int from_ifindex,t_odrp* 
 		request.source_ip = eth0_ip.sin_addr.s_addr;
 		request.dest_ip = odr_packet->dest_ip;
 		request.hop_count = 0;
-		
+		request.bcast_id = ++bcast_id;
+
 		memset(dest_mac,0xff,IF_HADDR);
 
 		dprintf("Routing miss, sending RREQ\n");
@@ -374,12 +390,14 @@ int add_route_entry(unsigned long dest_ip, int if_index, char* neighbour,int hop
 		node->if_index=	if_index;
 		memcpy(node->neighbour,neighbour,IF_HADDR);
 
-		if(hop_count!=node->hop_count)
+		if((hop_count!=node->hop_count)||force)
 			ret=1;
 		else ret=0;
 		node->hop_count=hop_count;
 		node->ts =	ts;
 
+		printf("Route: src %s dest ",get_name(eth0_ip.sin_addr.s_addr));
+		printf("%s hops:%d\n",get_name(node->dest_ip),node->hop_count);
 		//printf("\nrouting entry:-> from %s to %s in %d hops\n",get_name(eth0_ip.sin_addr.s_addr),
 		//					get_name(node->dest_ip),node->hop_count);
 	}
@@ -570,7 +588,7 @@ int process_APP_DATA(int sockfd,int domainfd,char *src_mac,int from_ifindex, t_o
 		request.source_ip = eth0_ip.sin_addr.s_addr;
 		request.dest_ip = odr_packet->dest_ip;
 		request.hop_count = 0;
-		
+		request.bcast_id  = ++bcast_id;		
 		memset(dest_mac,0xff,IF_HADDR);
 
 		i=0;
