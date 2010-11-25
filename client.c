@@ -27,7 +27,7 @@ int main()
 	
 	fd_set rset;
 	struct timeval tv;
-	tv.tv_sec = 3;
+	tv.tv_sec = 6;
 	tv.tv_usec =0;
 
 /*
@@ -71,7 +71,8 @@ int main()
        strcpy(servaddr.sun_path, UNIX_D_PATH);
 	while(1)
 	{
-			
+		tv.tv_sec =6;
+		tv.tv_usec =0;		
 		memset(server_name,0,sizeof(server_name));
 		memset(msg,0,sizeof(msg));
 		memset(server_ip,0,sizeof(server_ip));
@@ -106,12 +107,15 @@ int main()
 			}
 			else {
 				printf("client at node %s: timeout on response from %s\n",client_name,server_name);
+				printf("Initiating forced rediscovery\n")
 			
 				msg_send(sockfd,server_ip,server_port,"TIMEREQ",1);
 	
 				/*start time*/
 				FD_ZERO(&rset);
 				FD_SET(sockfd,&rset);
+				tv.tv_sec = 6;
+				tv.tv_usec =0;
 	
 				select(sockfd+1,&rset,NULL,NULL,&tv);
 				if(FD_ISSET(sockfd,&rset))	
@@ -125,9 +129,7 @@ int main()
 				}
 
 			}
-			/*if timed out, send again*/
 
-			/*if still time out, give up accept next server name*/	
 		}
 	}
 

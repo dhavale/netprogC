@@ -217,6 +217,71 @@ void odr_init()
 	free_hwa_info(hwahead);
 }
 
+void handle_same_node(int sockfd,int domainfd,spacket *packet,struct sockaddr_un * src_addr)
+{
+	rpacket app_packet;
+	struct sockaddr_un cliaddr;
+	app_node * app_entry=NULL;
+	int ret=0;
+
+	memset(&app_packet,0,sizeof(app_packet));
+	memset(&cliaddr,0,sizeof(cliaddr));
+		
+
+	if(!strcmp(src_addr->sun_path,SERVER_PATH))
+		{
+	
+			printf("[ODR]: data recvd from server\n");
+			app_packet.src_port = 4455;
+
+		/*build cliaddr */
+			printf("data for client at port %d \n",packet->dest_port);
+			app_entry = lookup_port(packet->dest_port);
+			if(app_entry!=NULL)
+			{
+				printf("data will be sendto %s\n",app_entry->sun_path);
+			 	strcpy(cliaddr.sun_path,app_entry->sun_path);
+			}
+			else{
+				printf("Very stale packet.. dropping\n");
+				return;	
+			}
+
+		}
+		else{
+			app_entry = lookup_sun_path(src_addr->sun_path);
+			if(app_entry==NULL)
+			{
+				app_packet.src_port = current_port++;
+				app_table_head = add_app_node_details(app_packet.src_port,src_addr->sun_path);
+				
+			}
+			else{
+				app_packet.src_port = app_entry->port;
+			}								
+			printf("[ODR]: data recvd from client\n");
+		/*build server address*/
+			strcpy(cliaddr.sun_path,SERVER_PATH);
+	
+		}
+
+		memcpy(app_packet.msg,packet->msg,MSG_LEN);
+
+		memcpy(app_packet.ip,packet->ip,IP_LEN);
+
+		cliaddr.sun_family = AF_LOCAL;
+		ret=sendto(domainfd,(char *)&app_packet,sizeof(app_packet),0,(struct sockaddr*)&cliaddr,
+						(socklen_t)sizeof(cliaddr));	
+		printf("data sent successfully\n");	
+		if(ret<sizeof(app_packet))
+		{
+			perror("sendto failed:");
+			return;
+		}	
+		return;
+
+
+}
 
 void process_app_req(int sockfd,int domainfd)
 {
@@ -252,7 +317,8 @@ void process_app_req(int sockfd,int domainfd)
 
 	if(dest_ip.s_addr==eth0_ip.sin_addr.s_addr)
 	{
-		
+		printf("\nrequest on Same node\n");
+		handle_same_node(sockfd,domainfd, &packet,&src_addr);	
 		return;
 	}		
 	entry= find_route_entry(dest_ip.s_addr,ts);
