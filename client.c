@@ -107,7 +107,7 @@ int main()
 			}
 			else {
 				printf("client at node %s: timeout on response from %s\n",client_name,server_name);
-				printf("Initiating forced rediscovery\n")
+				printf("Initiating forced rediscovery\n");
 			
 				msg_send(sockfd,server_ip,server_port,"TIMEREQ",1);
 	
