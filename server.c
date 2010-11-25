@@ -2,6 +2,11 @@
 #include <stdlib.h>
 #include "time_lib.h"
 
+#ifdef ODR_DEBUG
+#define dprintf(fmt, args...) printf(fmt, ##args)
+#else
+#define dprintf(fmt, args...)
+#endif
 struct sockaddr_un cliaddr, servaddr;
 
 int sig_term_handler()
@@ -41,7 +46,7 @@ int main()
        bind(sockfd, (struct sockaddr *) &servaddr, sizeof(servaddr));
 
 	struct hostent *hp;
-	printf("listening on sockfd %d\n",sockfd);
+	dprintf("listening on sockfd %d\n",sockfd);
 	while(1)
 	{	
 
@@ -51,7 +56,7 @@ int main()
 			memset(&ipv4addr,0,sizeof(ipv4addr));
 			msg_recv(sockfd,msg,client_ip,&source_port);	
 
-			printf("\nRequest from %s port %d\n",client_ip,source_port);
+			dprintf("\nRequest from %s port %d\n",client_ip,source_port);
 
 			inet_pton(AF_INET, client_ip, &ipv4addr);
 			hp= gethostbyaddr(&ipv4addr,sizeof(ipv4addr),AF_INET);

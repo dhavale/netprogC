@@ -3,6 +3,12 @@
 #include <string.h>
 #include "odr.h"
 #include "odr_lib.h"
+
+#ifdef ODR_DEBUG
+#define dprintf(fmt, args...) printf(fmt, ##args)
+#else
+#define dprintf(fmt, args...)
+#endif
 	struct sockaddr_in eth0_ip;	
 
 	struct hw_odr_info if_list[MAX_IF];
@@ -15,7 +21,7 @@ app_node * lookup_sun_path(const char *sun_path)
 {
 	app_node *node = app_table_head;
 	app_node *prev=NULL;
-	printf("looking up for %s \n", sun_path);
+	dprintf("looking up for %s \n", sun_path);
 
 	time_t ts=time(NULL);
 	while(node)
@@ -26,7 +32,7 @@ app_node * lookup_sun_path(const char *sun_path)
 			{
 				/*Stale entry,remove it and return null*/
 	
-				printf("stale entry deleting %d %s \n",node->port,node->sun_path);
+				dprintf("stale entry deleting %d %s \n",node->port,node->sun_path);
 				if(prev==NULL) /*head*/
 				{
 					prev=node;
@@ -52,7 +58,7 @@ app_node * lookup_sun_path(const char *sun_path)
 			{
 				/*Stale entry,remove it*/
 
-				printf("stale  NEQ  entry deleting %d %s \n",node->port,node->sun_path);
+				dprintf("stale  NEQ  entry deleting %d %s \n",node->port,node->sun_path);
 				if(prev==NULL) /*head*/
 				{
 					prev=node;
@@ -86,7 +92,7 @@ app_node * lookup_port(int port)
 
 	time_t ts=time(NULL);
 	
-	printf("looking up for %d \n", port);
+	dprintf("looking up for %d \n", port);
 	while(node)
 	{
 		if(node->port==port)
@@ -94,7 +100,7 @@ app_node * lookup_port(int port)
 			if((ts-node->ts)>TTL)
 			{
 				/*Stale entry,remove it and return null*/
-				printf("stale entry deleting %d %s \n",node->port,node->sun_path);
+				dprintf("stale entry deleting %d %s \n",node->port,node->sun_path);
 				if(prev==NULL) /*head*/
 				{
 					prev=node;
@@ -120,7 +126,7 @@ app_node * lookup_port(int port)
 			{
 				/*Stale entry,remove it*/
 
-				printf("stale NEQ entry deleting %d %s \n",node->port,node->sun_path);
+				dprintf("stale NEQ entry deleting %d %s \n",node->port,node->sun_path);
 				if(prev==NULL) /*head*/
 				{
 					prev=node;
@@ -150,7 +156,7 @@ app_node * add_app_node_details(int port, const char * sun_path)
 	app_node *node = (app_node*)malloc(sizeof(app_node));
 
 	memset(node,0,sizeof(app_node));
-	printf("Adding %d %s to app table\n",port,sun_path);
+	dprintf("Adding %d %s to app table\n",port,sun_path);
 
 	node->port=port;
 	strcpy(node->sun_path,sun_path);
@@ -231,15 +237,15 @@ void handle_same_node(int sockfd,int domainfd,spacket *packet,struct sockaddr_un
 	if(!strcmp(src_addr->sun_path,SERVER_PATH))
 		{
 	
-			printf("[ODR]: data recvd from server\n");
+			dprintf("[ODR]: data recvd from server\n");
 			app_packet.src_port = 4455;
 
 		/*build cliaddr */
-			printf("data for client at port %d \n",packet->dest_port);
+			dprintf("data for client at port %d \n",packet->dest_port);
 			app_entry = lookup_port(packet->dest_port);
 			if(app_entry!=NULL)
 			{
-				printf("data will be sendto %s\n",app_entry->sun_path);
+				dprintf("data will be sendto %s\n",app_entry->sun_path);
 			 	strcpy(cliaddr.sun_path,app_entry->sun_path);
 			}
 			else{
@@ -259,7 +265,7 @@ void handle_same_node(int sockfd,int domainfd,spacket *packet,struct sockaddr_un
 			else{
 				app_packet.src_port = app_entry->port;
 			}								
-			printf("[ODR]: data recvd from client\n");
+			dprintf("[ODR]: data recvd from client\n");
 		/*build server address*/
 			strcpy(cliaddr.sun_path,SERVER_PATH);
 	
@@ -272,12 +278,13 @@ void handle_same_node(int sockfd,int domainfd,spacket *packet,struct sockaddr_un
 		cliaddr.sun_family = AF_LOCAL;
 		ret=sendto(domainfd,(char *)&app_packet,sizeof(app_packet),0,(struct sockaddr*)&cliaddr,
 						(socklen_t)sizeof(cliaddr));	
-		printf("data sent successfully\n");	
 		if(ret<sizeof(app_packet))
 		{
 			perror("sendto failed:");
 			return;
-		}	
+		}
+			
+		dprintf("data sent successfully\n");	
 		return;
 
 
@@ -303,11 +310,11 @@ void process_app_req(int sockfd,int domainfd)
 	bzero(&req_packet,sizeof(req_packet));
 	dest_ip.s_addr = 0;
 
-	printf("[ODR]: data reading from domainfd\n");
+	dprintf("[ODR]: data reading from domainfd\n");
 
 	recvfrom(domainfd,(char*)&packet,sizeof(packet),0,(struct sockaddr*)&src_addr,&size);
 
-	printf("[ODR]:data for ODR from sun_path %s\n",src_addr.sun_path);
+	dprintf("[ODR]:data for ODR from sun_path %s\n",src_addr.sun_path);
 
 	if(!inet_aton(packet.ip,&dest_ip))
 	{
@@ -332,7 +339,7 @@ void process_app_req(int sockfd,int domainfd)
 		if(!strcmp(src_addr.sun_path,SERVER_PATH))
 		{
 	
-			printf("[ODR]: data recvd from server\n");
+			dprintf("[ODR]: data recvd from server\n");
 			data_odr.source_port = 4455;
 		}
 		else{
@@ -346,7 +353,7 @@ void process_app_req(int sockfd,int domainfd)
 			else{
 				data_odr.source_port = app_entry->port;
 			}								
-			printf("[ODR]: data recvd from client\n");
+			dprintf("[ODR]: data recvd from client\n");
 		}
 		data_odr.hop_count = 0;
 		if(packet.force_flag)
@@ -373,7 +380,10 @@ void process_app_req(int sockfd,int domainfd)
 		req_packet.dest_ip = dest_ip.s_addr;
 		req_packet.hop_count =0;
 		if(packet.force_flag)
+		{
 			req_packet.flag|=FORCED_ROUTE;
+			printf("Requesting forced discovery\n");
+		}
 		memset(dest_mac,0xff,IF_HADDR);
 		i=0;
 		while(i<total_if_count)

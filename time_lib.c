@@ -1,5 +1,9 @@
 #include "time_lib.h"
-
+#if ODR_DEBUG
+#define dprintf(fmt, args...) printf(fmt, ##args)
+#else
+#define dprintf(fmt, args...)
+#endif
 
 int msg_recv(int sockfd,char* msg_recvd,char* ip,int* src_port)
 {
@@ -7,9 +11,9 @@ int msg_recv(int sockfd,char* msg_recvd,char* ip,int* src_port)
 	int ret;
 	
 	memset(&packet,0,sizeof(rpacket));
-	printf("in %s waiting for data sockfd %d\n",__FUNCTION__,sockfd);
+	dprintf("in %s waiting for data sockfd %d\n",__FUNCTION__,sockfd);
 	ret=recvfrom(sockfd,(char *)&packet, sizeof(rpacket),0,NULL,NULL);
-	printf("data read from sockfd in %s\n",__FUNCTION__);	
+	dprintf("data read from sockfd in %s\n",__FUNCTION__);	
 	if(ret!=sizeof(rpacket))
 	{
 		printf("data read error from UDS in %s\n",__FUNCTION__);

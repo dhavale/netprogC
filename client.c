@@ -6,6 +6,11 @@
 #include <sys/un.h>
 #include <sys/socket.h>
 
+#ifdef ODR_DEBUG
+#define dprintf(fmt, args...) printf(fmt, ##args)
+#else
+#define dprintf(fmt, args...)
+#endif
 struct sockaddr_un cliaddr, servaddr;
 
 int sig_term_handler()
@@ -90,7 +95,7 @@ int main()
 	    	} else {
       			 printf("%s = ", hp->h_name);
      	  		sprintf(server_ip,"%s",(char*) inet_ntoa( *( struct in_addr*)( hp -> h_addr_list[0])));
-			printf("server ip(canonical): %s",server_ip);
+			dprintf("server ip(canonical): %s",server_ip);
 		
 			msg_send(sockfd,server_ip,server_port,"TIMEREQ",0);
 	
