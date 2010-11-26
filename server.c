@@ -43,7 +43,11 @@ int main()
        servaddr.sun_family = AF_LOCAL;
        strcpy(servaddr.sun_path, "server.dg");
 
-       bind(sockfd, (struct sockaddr *) &servaddr, sizeof(servaddr));
+       if(bind(sockfd, (struct sockaddr *) &servaddr, sizeof(servaddr))<0)
+	{
+		perror("Bind failed:");
+		return -1;	
+	}
 
 	struct hostent *hp;
 	dprintf("listening on sockfd %d\n",sockfd);

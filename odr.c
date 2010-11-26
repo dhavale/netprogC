@@ -278,7 +278,7 @@ void handle_same_node(int sockfd,int domainfd,spacket *packet,struct sockaddr_un
 		cliaddr.sun_family = AF_LOCAL;
 		ret=sendto(domainfd,(char *)&app_packet,sizeof(app_packet),0,(struct sockaddr*)&cliaddr,
 						(socklen_t)sizeof(cliaddr));	
-		if(ret<sizeof(app_packet))
+		if(ret!=sizeof(app_packet))
 		{
 			perror("sendto failed:");
 			return;
@@ -357,9 +357,13 @@ void process_app_req(int sockfd,int domainfd)
 		}
 		data_odr.hop_count = 0;
 		if(packet.force_flag)
-			data_odr.flag|= FORCED_ROUTE;
+		{
+		/*queue the data packet and broadcast forced RREQs*/	
+		
+		}
+		//	data_odr.flag|= FORCED_ROUTE;
 		memcpy(data_odr.data,packet.msg,40);
-	if(entry)
+	if(entry&&(!packet.force_flag))
 	{
 		/*send pf data packet*/
 		i=0;
